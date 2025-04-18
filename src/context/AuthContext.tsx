@@ -1,6 +1,6 @@
 import { createContext, ReactNode, useContext, useEffect, useState } from 'react';
 import { AuthContextType, AuthState, LoginCredentials } from '../types/auth';
-import { getCurrentUser, isAuthenticated, mockLogin, removeAuthToken } from '../utils/auth';
+import { login as authLogin, logout as authLogout, getCurrentUser, isAuthenticated } from '../utils/auth';
 
 // Default auth state
 const defaultAuthState: AuthState = {
@@ -14,7 +14,7 @@ const defaultAuthState: AuthState = {
 export const AuthContext = createContext<AuthContextType>({
   ...defaultAuthState,
   login: async () => false,
-  logout: () => {},
+  logout: async () => {},
 });
 
 // Auth provider props
@@ -31,7 +31,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     const initializeAuth = async () => {
       try {
         if (isAuthenticated()) {
-          const user = getCurrentUser();
+          const user = await getCurrentUser();
           setAuthState({
             user,
             isAuthenticated: !!user,
@@ -65,7 +65,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     }));
 
     try {
-      const result = await mockLogin(credentials);
+      const result = await authLogin(credentials);
 
       if (result.success && result.user) {
         setAuthState({
@@ -94,14 +94,17 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   };
 
   // Logout function
-  const logout = () => {
-    removeAuthToken();
-    setAuthState({
-      user: null,
-      isAuthenticated: false,
-      isLoading: false,
-      error: null,
-    });
+  const logout = async () => {
+    try {
+      await authLogout();
+    } finally {
+      setAuthState({
+        user: null,
+        isAuthenticated: false,
+        isLoading: false,
+        error: null,
+      });
+    }
   };
 
   // Auth context value
