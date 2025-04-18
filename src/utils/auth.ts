@@ -7,7 +7,7 @@ export const isAuthenticated = (): boolean => {
 };
 
 // Login function using API
-export const doLogin = async (credentials: LoginCredentials): Promise<{ success: boolean; user?: User; error?: string }> => {
+export const login = async (credentials: LoginCredentials): Promise<{ success: boolean; user?: User; error?: string }> => {
   try {
     // Call the login API
     const response = await authApi.login(credentials.username, credentials.password);
@@ -57,8 +57,7 @@ export const logout = async (): Promise<void> => {
   }
 };
 
-// For backward compatibility with existing code
-export const login = doLogin;
+// Export token utility functions
 export const getAuthToken = getToken;
 export const setAuthToken = setToken;
 export const removeAuthToken = removeToken;
