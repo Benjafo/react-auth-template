@@ -15,14 +15,17 @@
     "@tanstack/react-router": "^1.116.0",
     "@tanstack/router-devtools": "^1.116.0",
     "@types/js-cookie": "^3.0.6",
+    "cookie-parser": "^1.4.6",
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",
     "express": "^5.1.0",
+    "express-rate-limit": "^7.1.5",
     "js-cookie": "^3.0.5",
     "jsonwebtoken": "^9.0.2",
     "react": "^19.0.0",
     "react-auth-template": "file:",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "uuid": "^9.0.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.22.0",
