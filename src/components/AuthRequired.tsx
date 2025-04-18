@@ -1,4 +1,4 @@
-import { Navigate, useNavigate } from '@tanstack/react-router';
+import { Navigate } from '@tanstack/react-router';
 import { ReactNode } from 'react';
 import useAuth from '../hooks/useAuth';
 
@@ -9,7 +9,6 @@ interface AuthRequiredProps {
 // Component to protect routes that require authentication
 const AuthRequired = ({ children }: AuthRequiredProps) => {
   const { isAuthenticated, isLoading } = useAuth();
-  const navigate = useNavigate();
 
   // Show loading state
   if (isLoading) {

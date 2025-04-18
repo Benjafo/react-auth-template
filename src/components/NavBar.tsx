@@ -18,7 +18,16 @@ const NavBar = () => {
               <Link to="/landing">Landing</Link>
             </li>
             <li>
-              <button style={{ justifyContent: 'start' }} onClick={logout}>Logout ({user?.username})</button>
+              <button 
+                style={{ justifyContent: 'start' }} 
+                onClick={() => {
+                  logout().catch(error => {
+                    console.error('Logout error:', error);
+                  });
+                }}
+              >
+                Logout ({user?.username})
+              </button>
             </li>
           </>
         ) : (
