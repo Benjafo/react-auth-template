@@ -4,6 +4,7 @@ import {
     login as authLogin,
     logout as authLogout,
     getCurrentUser,
+    hasRefreshToken,
     isAuthenticated,
     refreshAuthToken
 } from '../utils/auth';
@@ -64,7 +65,13 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
             const success = await refreshAuthToken();
             
             if (!success) {
-                // If refresh failed, update auth state
+                // If refresh failed, trigger a logout
+                console.log('Refresh token verification failed, logging out user');
+                
+                // Call the logout function to clean up properly
+                await authLogout();
+                
+                // Update auth state
                 setAuthState({
                     user: null,
                     isAuthenticated: false,
@@ -90,6 +97,10 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
             return true;
         } catch (error) {
             console.error('Token refresh error:', error);
+            
+            // Call the logout function to clean up properly
+            await authLogout();
+            
             setAuthState({
                 user: null,
                 isAuthenticated: false,
@@ -105,26 +116,49 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     useEffect(() => {
         const initializeAuth = async () => {
             try {
-                if (isAuthenticated()) {
-                    const user = await getCurrentUser();
-                    setAuthState({
-                        user,
-                        isAuthenticated: !!user,
-                        isLoading: false,
-                        error: null,
-                    });
+                console.log('Initializing auth state...');
+                
+                // Check if we have a CSRF token or if we might have HTTP-only cookies
+                if (isAuthenticated() || hasRefreshToken()) {
+                    console.log('Found authentication tokens, attempting to refresh...');
                     
-                    // Set up refresh timer if authenticated
-                    if (user) {
-                        setupRefreshTimer();
+                    // On page load/refresh, try to refresh the token first
+                    // This will get a new CSRF token if the HTTP-only cookies are still valid
+                    const refreshed = await refreshToken();
+                    
+                    if (refreshed) {
+                        console.log('Token refresh succeeded, getting user data...');
+                        // If refresh succeeded, get the current user
+                        const user = await getCurrentUser();
+                        setAuthState({
+                            user,
+                            isAuthenticated: !!user,
+                            isLoading: false,
+                            error: null,
+                        });
+                        
+                        // Set up refresh timer if authenticated
+                        if (user) {
+                            setupRefreshTimer();
+                        }
+                    } else {
+                        console.log('Token refresh failed, user is not authenticated');
+                        // Not authenticated or refresh failed
+                        setAuthState({
+                            ...defaultAuthState,
+                            isLoading: false,
+                        });
                     }
                 } else {
+                    console.log('No authentication tokens found');
+                    // Not authenticated
                     setAuthState({
                         ...defaultAuthState,
                         isLoading: false,
                     });
                 }
             } catch (error) {
+                console.error('Auth initialization error:', error);
                 setAuthState({
                     ...defaultAuthState,
                     isLoading: false,

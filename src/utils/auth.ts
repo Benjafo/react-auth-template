@@ -1,5 +1,6 @@
 import { LoginCredentials, User } from '../types/auth';
 import {
+    hasRefreshToken as apiHasRefreshToken,
     isAuthenticated as apiIsAuthenticated,
     authApi,
     clearCsrfToken,
@@ -70,6 +71,9 @@ export const refreshAuthToken = async (): Promise<boolean> => {
 export const getCsrfAuthToken = getCsrfToken;
 export const setCsrfAuthToken = setCsrfToken;
 export const clearCsrfAuthToken = clearCsrfToken;
+
+// Export hasRefreshToken function
+export const hasRefreshToken = apiHasRefreshToken;
 
 // Keep these for backward compatibility
 export const getAuthToken = getCsrfToken;

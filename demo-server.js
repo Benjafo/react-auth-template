@@ -23,7 +23,8 @@ const csrfTokens = new Map();
 
 // Middleware
 app.use(cors({
-    origin: process.env.ORIGIN_URL | 'http://localhost:5173', // Your frontend URL
+    origin: process.env.ORIGIN_URL || 'http://localhost:5173', // Your frontend URL
+
     credentials: true // Allow cookies to be sent
 }));
 app.use(express.json());
@@ -139,7 +140,7 @@ app.post('/api/login', loginLimiter, (req, res) => {
     
     // Find user
     const user = USERS.find(u => u.username === username && u.password === password);
-    
+
     if (!user) {
         return res.status(401).json({ message: 'Invalid username or password' });
     }
@@ -173,6 +174,8 @@ app.post('/api/login', loginLimiter, (req, res) => {
 });
 
 // Refresh token route
+// This endpoint only issues a new access token, not a new refresh token
+// The refresh token remains valid until it expires or is explicitly revoked
 app.post('/api/refresh', (req, res) => {
     const refreshToken = req.cookies.refresh_token;
     
@@ -182,6 +185,8 @@ app.post('/api/refresh', (req, res) => {
     
     jwt.verify(refreshToken, REFRESH_TOKEN_SECRET, (err, user) => {
         if (err) {
+            // If refresh token is invalid or expired, return 403
+            // This will trigger a logout on the frontend
             return res.status(403).json({ message: 'Invalid or expired refresh token' });
         }
         
@@ -197,11 +202,21 @@ app.post('/api/refresh', (req, res) => {
             return res.status(404).json({ message: 'User not found' });
         }
         
-        // Generate new tokens
-        const { accessToken, refreshToken: newRefreshToken } = generateTokens(userData);
+        // Generate only a new access token, keep using the same refresh token
+        // This is more secure as refresh tokens are only issued during login
+        const accessToken = jwt.sign(
+            { id: userData.id, username: userData.username },
+            JWT_SECRET,
+            { expiresIn: ACCESS_TOKEN_EXPIRY }
+        );
         
-        // Set new tokens in HTTP-only cookies
-        setTokenCookies(res, accessToken, newRefreshToken);
+        // Set only the new access token in HTTP-only cookie, keep the existing refresh token
+        res.cookie('access_token', accessToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production', // Secure in production
+            sameSite: 'strict',
+            maxAge: 15 * 60 * 1000, // 15 minutes in milliseconds
+        });
         
         // Generate new CSRF token
         const csrfToken = generateCsrfToken(userData.id);
