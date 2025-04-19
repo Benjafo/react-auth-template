@@ -1,8 +1,27 @@
 // API constants
 const API_URL = 'http://localhost:3001/api';
 
-// CSRF token management
+// Local storage keys
+const ACCESS_TOKEN_STORAGE_KEY = 'access_token';
+
+// Token management
+let accessToken: string | null = null;
 let csrfToken: string | null = null;
+
+// Initialize access token from localStorage if available
+const initAccessTokenFromStorage = (): void => {
+    try {
+        const storedToken = localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY);
+        if (storedToken) {
+            accessToken = storedToken;
+        }
+    } catch (error) {
+        console.error('Error initializing access token from storage:', error);
+    }
+};
+
+// Initialize tokens on module load
+initAccessTokenFromStorage();
 
 // Initialize CSRF token from cookie if available
 const initCsrfTokenFromCookie = (): void => {
@@ -25,6 +44,36 @@ const initCsrfTokenFromCookie = (): void => {
 // Initialize the CSRF token from cookie on module load
 initCsrfTokenFromCookie();
 
+// Access token management
+export const getAccessToken = (): string | null => {
+    // If token is not in memory, try to get it from localStorage
+    if (!accessToken) {
+        initAccessTokenFromStorage();
+    }
+    return accessToken;
+};
+
+export const setAccessToken = (token: string): void => {
+    accessToken = token;
+    // Also store in localStorage for persistence across page refreshes
+    try {
+        localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, token);
+    } catch (error) {
+        console.error('Error storing access token in localStorage:', error);
+    }
+};
+
+export const clearAccessToken = (): void => {
+    accessToken = null;
+    // Also remove from localStorage
+    try {
+        localStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY);
+    } catch (error) {
+        console.error('Error removing access token from localStorage:', error);
+    }
+};
+
+// CSRF token management
 export const getCsrfToken = (): string | null => {
     // If token is not in memory, try to get it from cookie
     if (!csrfToken) {
@@ -41,23 +90,34 @@ export const clearCsrfToken = (): void => {
     csrfToken = null;
 };
 
-// For backward compatibility - these functions don't do anything with HTTP-only cookies
-// but are kept to maintain the same interface
-export const getToken = (): string | undefined => undefined;
-export const setToken = (_token: string): void => {};
-export const removeToken = (): void => {};
-
-// Check if user is authenticated (based on CSRF token presence)
-export const isAuthenticated = (): boolean => {
-    return !!csrfToken;
+// Clear all tokens
+export const clearAllTokens = (): void => {
+    clearAccessToken();
+    clearCsrfToken();
 };
 
-// Create headers with CSRF token
+// For backward compatibility
+export const getToken = (): string | null => getAccessToken();
+export const setToken = (token: string): void => setAccessToken(token);
+export const removeToken = (): void => clearAccessToken();
+
+// Check if user is authenticated (based on access token presence)
+export const isAuthenticated = (): boolean => {
+    return !!accessToken;
+};
+
+// Create headers with Authorization and CSRF token
 const createHeaders = (includeAuth: boolean = true): HeadersInit => {
     const headers: HeadersInit = {
         'Content-Type': 'application/json',
     };
 
+    // Add Authorization header with Bearer token if we have an access token
+    if (includeAuth && accessToken) {
+        headers['Authorization'] = `Bearer ${accessToken}`;
+    }
+
+    // Add CSRF token for operations that require it (like using refresh token)
     if (includeAuth && csrfToken) {
         headers['X-CSRF-Token'] = csrfToken;
     }
@@ -86,8 +146,8 @@ export const hasRefreshToken = (): boolean => {
 
 // Refresh token function
 // This function attempts to refresh the access token using the existing refresh token
-// If successful, it updates the CSRF token and returns true
-// If unsuccessful (refresh token expired or invalid), it clears the CSRF token and returns false,
+// If successful, it updates the access token and CSRF token and returns true
+// If unsuccessful (refresh token expired or invalid), it clears all tokens and returns false,
 // which will trigger a logout in the AuthContext
 export const refreshToken = async (): Promise<boolean> => {
     try {
@@ -95,7 +155,7 @@ export const refreshToken = async (): Promise<boolean> => {
         
         const response = await fetch(`${API_URL}/refresh`, {
             method: 'POST',
-            credentials: 'include', // Include cookies
+            credentials: 'include', // Include cookies for refresh token
             headers: {
                 'Content-Type': 'application/json',
             },
@@ -103,19 +163,20 @@ export const refreshToken = async (): Promise<boolean> => {
 
         if (!response.ok) {
             console.log('Token refresh failed with status:', response.status);
-            // If refresh fails (e.g., refresh token expired), clear CSRF token
+            // If refresh fails (e.g., refresh token expired), clear all tokens
             // This will be detected by AuthContext which will trigger a logout
-            clearCsrfToken();
+            clearAllTokens();
             return false;
         }
 
         const data = await response.json();
-        console.log('Token refresh succeeded, got new CSRF token');
+        console.log('Token refresh succeeded, got new access token and CSRF token');
+        setAccessToken(data.accessToken);
         setCsrfToken(data.csrfToken);
         return true;
     } catch (error) {
         console.error('Token refresh error:', error);
-        clearCsrfToken();
+        clearAllTokens();
         return false;
     }
 };
@@ -136,7 +197,8 @@ const apiRequest = async <T>(
     const config: RequestInit = {
         method,
         headers,
-        credentials: 'include', // Include cookies in request
+        // credentials: endpoint === '/refresh' ? 'include' : 'same-origin', // Only include cookies for refresh
+        credentials: 'include',
         body: data ? JSON.stringify(data) : undefined,
     };
 
@@ -151,9 +213,9 @@ const apiRequest = async <T>(
                 // Retry the request with the new token
                 return apiRequest<T>(endpoint, method, data, includeAuth, false);
             } else {
-                // If refresh fails (e.g., refresh token expired), clear CSRF token
+                // If refresh fails (e.g., refresh token expired), clear all tokens
                 // This will be detected by AuthContext which will trigger a logout
-                clearCsrfToken();
+                clearAllTokens();
                 throw new Error('Session expired. Please login again.');
             }
         }
@@ -173,7 +235,7 @@ const apiRequest = async <T>(
 // Auth API endpoints
 export const authApi = {
     login: async (username: string, password: string) => {
-        const response = await apiRequest<{ user: any; csrfToken: string }>(
+        const response = await apiRequest<{ user: any; accessToken: string; csrfToken: string }>(
             '/login',
             'POST',
             { username, password },
@@ -181,12 +243,13 @@ export const authApi = {
             false // Don't retry on unauthorized for login
         );
         
-        // Store the CSRF token
+        // Store the tokens
+        setAccessToken(response.accessToken);
         setCsrfToken(response.csrfToken);
         
         return {
             user: response.user,
-            token: response.csrfToken, // For backward compatibility
+            token: response.accessToken, // For backward compatibility
         };
     },
 
@@ -198,7 +261,7 @@ export const authApi = {
         try {
             await apiRequest<{ message: string }>('/logout', 'POST');
         } finally {
-            clearCsrfToken();
+            clearAllTokens();
         }
     },
     

@@ -3,9 +3,13 @@ import {
     hasRefreshToken as apiHasRefreshToken,
     isAuthenticated as apiIsAuthenticated,
     authApi,
+    clearAccessToken,
+    clearAllTokens,
     clearCsrfToken,
+    getAccessToken,
     getCsrfToken,
     refreshToken,
+    setAccessToken,
     setCsrfToken
 } from './api';
 
@@ -43,8 +47,8 @@ export const getCurrentUser = async (): Promise<User | null> => {
         const user = await authApi.getCurrentUser();
         return user;
     } catch (error) {
-        // If there's an error (like token expired), clear the CSRF token
-        clearCsrfToken();
+        // If there's an error (like token expired), clear all tokens
+        clearAllTokens();
         return null;
     }
 };
@@ -57,8 +61,8 @@ export const logout = async (): Promise<void> => {
     } catch (error) {
         console.error('Logout error:', error);
     } finally {
-        // Always clear the CSRF token, even if the API call fails
-        clearCsrfToken();
+        // Always clear all tokens, even if the API call fails
+        clearAllTokens();
     }
 };
 
@@ -67,15 +71,23 @@ export const refreshAuthToken = async (): Promise<boolean> => {
     return refreshToken();
 };
 
+// Export token utility functions
+export const getAccessAuthToken = getAccessToken;
+export const setAccessAuthToken = setAccessToken;
+export const clearAccessAuthToken = clearAccessToken;
+
 // Export CSRF token utility functions
 export const getCsrfAuthToken = getCsrfToken;
 export const setCsrfAuthToken = setCsrfToken;
 export const clearCsrfAuthToken = clearCsrfToken;
 
+// Export clear all tokens function
+export const clearAllAuthTokens = clearAllTokens;
+
 // Export hasRefreshToken function
 export const hasRefreshToken = apiHasRefreshToken;
 
 // Keep these for backward compatibility
-export const getAuthToken = getCsrfToken;
-export const setAuthToken = setCsrfToken;
-export const removeAuthToken = clearCsrfToken;
+export const getAuthToken = getAccessToken;
+export const setAuthToken = setAccessToken;
+export const removeAuthToken = clearAccessToken;

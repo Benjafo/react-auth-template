@@ -21,10 +21,20 @@ const REFRESH_TOKEN_EXPIRY = '7d'; // Longer-lived refresh token
 const refreshTokens = new Map();
 const csrfTokens = new Map();
 
+// CORS origins
+const origins = [
+    'http://localhost:5173',
+    'http://localhost:5174'
+];
+
+// Add process.env.ORIGIN_URL to the array if it exists
+if (process.env.ORIGIN_URL) {
+origins.push(process.env.ORIGIN_URL);
+}
+
 // Middleware
 app.use(cors({
-    origin: process.env.ORIGIN_URL || 'http://localhost:5173', // Your frontend URL
-
+    origin: origins,
     credentials: true // Allow cookies to be sent
 }));
 app.use(express.json());
@@ -71,16 +81,8 @@ const generateTokens = (user) => {
     return { accessToken, refreshToken };
 };
 
-// Set secure cookies
-const setTokenCookies = (res, accessToken, refreshToken) => {
-    // Set access token in HTTP-only cookie
-    res.cookie('access_token', accessToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production', // Secure in production
-        sameSite: 'strict',
-        maxAge: 15 * 60 * 1000, // 15 minutes in milliseconds
-    });
-    
+// Set refresh token cookie
+const setRefreshTokenCookie = (res, refreshToken) => {
     // Set refresh token in HTTP-only cookie
     res.cookie('refresh_token', refreshToken, {
         httpOnly: true,
@@ -92,7 +94,6 @@ const setTokenCookies = (res, accessToken, refreshToken) => {
 
 // Clear auth cookies
 const clearTokenCookies = (res) => {
-    res.clearCookie('access_token');
     res.clearCookie('refresh_token');
     res.clearCookie('csrf_token');
 };
@@ -116,9 +117,10 @@ const verifyCsrfToken = (req, res, next) => {
     next();
 };
 
-// Middleware to verify JWT token from cookies
+// Middleware to verify JWT token from Authorization header
 const authenticateToken = (req, res, next) => {
-    const accessToken = req.cookies.access_token;
+    const authHeader = req.headers['authorization'];
+    const accessToken = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN format
     
     if (!accessToken) {
         return res.status(401).json({ message: 'Authentication required' });
@@ -148,8 +150,8 @@ app.post('/api/login', loginLimiter, (req, res) => {
     // Generate tokens
     const { accessToken, refreshToken } = generateTokens(user);
     
-    // Set tokens in HTTP-only cookies
-    setTokenCookies(res, accessToken, refreshToken);
+    // Set refresh token in HTTP-only cookie
+    setRefreshTokenCookie(res, refreshToken);
     
     // Generate CSRF token
     const csrfToken = generateCsrfToken(user.id);
@@ -162,13 +164,14 @@ app.post('/api/login', loginLimiter, (req, res) => {
         maxAge: 15 * 60 * 1000, // 15 minutes
     });
     
-    // Return user info and CSRF token
+    // Return user info, access token, and CSRF token
     res.json({
         user: {
             id: user.id,
             username: user.username,
             email: user.email,
         },
+        accessToken,
         csrfToken,
     });
 });
@@ -210,14 +213,6 @@ app.post('/api/refresh', (req, res) => {
             { expiresIn: ACCESS_TOKEN_EXPIRY }
         );
         
-        // Set only the new access token in HTTP-only cookie, keep the existing refresh token
-        res.cookie('access_token', accessToken, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production', // Secure in production
-            sameSite: 'strict',
-            maxAge: 15 * 60 * 1000, // 15 minutes in milliseconds
-        });
-        
         // Generate new CSRF token
         const csrfToken = generateCsrfToken(userData.id);
         
@@ -229,9 +224,10 @@ app.post('/api/refresh', (req, res) => {
             maxAge: 15 * 60 * 1000, // 15 minutes
         });
         
-        // Return success and CSRF token
+        // Return success, new access token, and CSRF token
         res.json({
             message: 'Token refreshed successfully',
+            accessToken,
             csrfToken,
         });
     });

@@ -3,6 +3,7 @@ import { AuthContextType, AuthState, LoginCredentials } from '../types/auth';
 import {
     login as authLogin,
     logout as authLogout,
+    clearAllAuthTokens,
     getCurrentUser,
     hasRefreshToken,
     isAuthenticated,
@@ -118,12 +119,37 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
             try {
                 console.log('Initializing auth state...');
                 
-                // Check if we have a CSRF token or if we might have HTTP-only cookies
-                if (isAuthenticated() || hasRefreshToken()) {
-                    console.log('Found authentication tokens, attempting to refresh...');
+                // Check if we have an access token in memory
+                if (isAuthenticated()) {
+                    console.log('Found access token in memory, getting user data...');
                     
-                    // On page load/refresh, try to refresh the token first
-                    // This will get a new CSRF token if the HTTP-only cookies are still valid
+                    // If we have an access token, get the current user
+                    const user = await getCurrentUser();
+                    if (user) {
+                        setAuthState({
+                            user,
+                            isAuthenticated: true,
+                            isLoading: false,
+                            error: null,
+                        });
+                        
+                        // Set up refresh timer
+                        setupRefreshTimer();
+                    } else {
+                        console.log('Failed to get user data, clearing tokens');
+                        // Clear tokens and set not authenticated
+                        clearAllAuthTokens();
+                        setAuthState({
+                            ...defaultAuthState,
+                            isLoading: false,
+                        });
+                    }
+                } 
+                // If we don't have an access token but might have a refresh token
+                else if (hasRefreshToken()) {
+                    console.log('No access token, but found refresh token, attempting to refresh...');
+                    
+                    // Try to refresh the token
                     const refreshed = await refreshToken();
                     
                     if (refreshed) {
